@@ -1,0 +1,37 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Veto Agent — Token Vault &amp; CIBA Demo</title><style>body{font-family:system-ui,sans-serif;max-width:920px;margin:24px auto;padding:0 16px;line-height:1.5;color:#111}h1{font-size:28px}section{border:1px solid #ccc;border-radius:10px;padding:14px;margin:14px 0}button{padding:8px 12px;margin:4px 4px 4px 0;cursor:pointer}input{padding:8px;margin:4px 0;width:280px;max-width:100%}.high{background:#fde8e8}.low{background:#e8f5e9}.pend{background:#fff3cd;border:1px solid #d4a017;border-radius:8px;padding:10px;margin:8px 0}#log{background:#111;color:#0f0;padding:12px;border-radius:8px;white-space:pre-wrap;font-family:monospace;min-height:120px}.muted{color:#555;font-size:14px}</style></head><body>
+<h1>🛡️ Veto Agent</h1>
+<p><b>MLH Global Hack Week: Builders Week — The Veto Agent (Token Vault &amp; Asynchronous Authorization / CIBA).</b> An AI agent connected to a third-party service (GitHub). Low-risk actions run at once. <b>High-impact actions pause and ask for approval out of band</b> — in the Approval Inbox below, simulating a push notification / email — and stay halted until you Approve or Veto them.</p>
+<p class="muted">Honest scope: this is a static demo. The Token Vault is simulated in memory only (a token you type is held in a JS variable, never saved to localStorage, never shown in full, and is cleared on Revoke / reload). High-impact actions are simulated — nothing is ever really deleted or scheduled. The GitHub fetch below is real: it calls the public GitHub API.</p>
+<section><h2>1 · Token Vault (simulated)</h2>
+<label>GitHub username <input id="user" value="teri-ma-di"></label><br>
+<label>Access token (optional — public data needs none) <input id="tok" type="password" placeholder="ghp_… (optional)"></label><br>
+<button onclick="connect()">Store token in Vault &amp; Connect</button> <button onclick="revoke()">Revoke token</button>
+<p id="vault">Vault: empty — no token stored.</p></section>
+<section><h2>2 · Agent — ask it to do something</h2>
+<p class="muted">Low-risk (runs immediately):</p>
+<button class="low" onclick="listRepos()">📋 List my GitHub repos</button>
+<button class="low" onclick="showProfile()">👤 Show my GitHub profile</button>
+<p class="muted">High-impact (pauses for out-of-band approval):</p>
+<button class="high" onclick="ask('Delete all unread emails','Gmail — delete every unread email')">🗑️ Delete all unread emails</button>
+<button class="high" onclick="ask('Schedule a meeting with the CEO','Google Calendar — book 1h with the CEO tomorrow 9:00')">📅 Schedule a meeting with the CEO</button>
+<button class="high" onclick="ask('Delete repository ghw-builders-week','GitHub — permanently delete this repository')">💣 Delete repository ghw-builders-week</button>
+<div id="result"></div></section>
+<section><h2>3 · Out-of-band Approval Inbox (simulated push / email channel)</h2>
+<p class="muted">This inbox is <b>outside the chat session</b>, like a CIBA push notification or email. Nothing high-impact runs until you Approve here. Requests expire after 120 seconds. Approving runs the action (simulated); Veto blocks it for good.</p>
+<div id="inbox"><p>No pending approval requests.</p></div></section>
+<section><h2>Agent log</h2><div id="log">Agent ready. Connect, then try a low-risk action and a high-impact one.
+</div></section>
+<p class="muted">Built for MLH GHW Builders Week, Nov 2026 · Repo: teri-ma-di/ghw-builders-week · Auth0 Token Vault / CIBA concepts demonstrated in a static, no-backend demo.</p>
+<script>
+let vaultToken=null, vaultUser='teri-ma-di', seq=0; const pending={};
+function log(m){document.getElementById('log').textContent+=m+'\n';}
+function connect(){vaultUser=document.getElementById('user').value.trim()||'teri-ma-di';const t=document.getElementById('tok').value;vaultToken=t||null;document.getElementById('vault').textContent=vaultToken?('Vault: GitHub token stored in memory only — ••••'+vaultToken.slice(-4)+' — scope: read-only demo, never persisted.'):('Vault: connected as '+vaultUser+' — no token stored (public GitHub data only).');log('Connected to GitHub as '+vaultUser+(vaultToken?' (token held in memory, masked)':''));}
+function revoke(){vaultToken=null;document.getElementById('tok').value='';document.getElementById('vault').textContent='Vault: empty — token revoked.';log('Token revoked from Vault.');}
+async function gh(path){const h={};if(vaultToken)h.Authorization='Bearer '+vaultToken;const r=await fetch('https://api.github.com'+path,{headers:h});if(!r.ok)throw new Error('GitHub API '+r.status);return r.json();}
+async function listRepos(){try{const d=await gh('/users/'+encodeURIComponent(vaultUser)+'/repos?per_page=100');document.getElementById('result').innerHTML='<h3>Repos for '+vaultUser+' ('+d.length+')</h3><ul>'+d.map(function(x){return '<li><b>'+x.name+'</b> — '+(x.description||'');}).join('')+'</ul>';log('LOW-RISK: listed '+d.length+' repos for '+vaultUser+' — executed immediately, no approval needed.');}catch(e){log('Fetch failed: '+e.message);}}
+async function showProfile(){try{const d=await gh('/users/'+encodeURIComponent(vaultUser));document.getElementById('result').innerHTML='<h3>'+d.login+'</h3><p>'+(d.bio||'')+'</p><p>Public repos: '+d.public_repos+' · Followers: '+d.followers+'</p>';log('LOW-RISK: fetched profile for '+vaultUser+' — executed immediately.');}catch(e){log('Fetch failed: '+e.message);}}
+function ask(action,detail){seq++;const id=seq;const label='REQ-'+String(id).padStart(3,'0');pending[id]={action:action,detail:detail,label:label,expires:Date.now()+120000};log('HIGH-IMPACT: "'+action+'" — EXECUTION HALTED. CIBA approval request '+label+' sent out of band. Waiting for approval outside the chat…');renderInbox();}
+function renderInbox(){const el=document.getElementById('inbox');const ids=Object.keys(pending);if(!ids.length){el.innerHTML='<p>No pending approval requests.</p>';return;}el.innerHTML=ids.map(function(id){const p=pending[id];const s=Math.max(0,Math.ceil((p.expires-Date.now())/1000));return '<div class="pend"><b>Approval request '+p.label+'</b><br>Action: <b>'+p.action+'</b><br>'+p.detail+'<br>Expires in '+s+'s — the agent is paused until you decide.<br><button onclick="decide('+id+',true)">Approve</button> <button onclick="decide('+id+',false)">Veto</button></div>';}).join('');}
+function decide(id,ok){const p=pending[id];if(!p)return;delete pending[id];renderInbox();if(ok){log('APPROVED out of band ('+p.label+'): "'+p.action+'" — EXECUTED (simulated; no real data was deleted or scheduled).');document.getElementById('result').innerHTML='<p>Approved — "'+p.action+'" executed (simulated).</p>';}else{log('VETOED out of band ('+p.label+'): "'+p.action+'" — BLOCKED. Nothing was executed.');document.getElementById('result').innerHTML='<p>Vetoed — "'+p.action+'" was NOT executed.</p>';}}
+setInterval(function(){const now=Date.now();let changed=false;for(const id of Object.keys(pending)){if(pending[id].expires<=now){log('EXPIRED ('+pending[id].label+'): "'+pending[id].action+'" — approval window closed. NOT executed.');delete pending[id];changed=true;}}if(changed)renderInbox();else if(Object.keys(pending).length)renderInbox();},1000);
+</script></body></html>
