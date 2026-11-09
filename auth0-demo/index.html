@@ -1,0 +1,73 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Builders Week Login Demo - Auth0</title>
+<style>
+  body { font-family: system-ui, sans-serif; background: #0f172a; color: #e2e8f0; margin: 0; padding: 2rem; }
+  main { max-width: 640px; margin: 0 auto; }
+  h1 { font-size: 1.6rem; }
+  button { background: #6366f1; color: #fff; border: 0; border-radius: 8px; padding: 0.6rem 1.2rem; font-size: 1rem; cursor: pointer; }
+  button:hover { background: #4f46e5; }
+  pre { background: #1e293b; padding: 1rem; border-radius: 8px; overflow: auto; }
+  #status { margin: 1rem 0; }
+</style>
+</head>
+<body>
+<main>
+  <h1>Builders Week Login Demo</h1>
+  <p>A tiny single-page app that signs you in with Auth0 Universal Login and shows your profile. Built for MLH Global Hack Week: Builders Week.</p>
+  <p id="status">Loading...</p>
+  <button id="login" hidden>Log in</button>
+  <button id="logout" hidden>Log out</button>
+  <pre id="profile" hidden></pre>
+</main>
+<script src="https://cdn.auth0.com/js/auth0-spa-js/2.0/auth0-spa-js.production.js"></script>
+<script>
+  var AUTH0_DOMAIN = 'dev-kcit4n6rij20q4zi.us.auth0.com';
+  var AUTH0_CLIENT_ID = '7wyHonMGCMit8P772fQZd2CKH0SffdcA';
+  var auth0Client = null;
+  var statusEl = document.getElementById('status');
+  var loginBtn = document.getElementById('login');
+  var logoutBtn = document.getElementById('logout');
+  var profileEl = document.getElementById('profile');
+
+  function setStatus(text) { statusEl.textContent = text; }
+
+  async function updateUI() {
+    var isAuthenticated = await auth0Client.isAuthenticated();
+    loginBtn.hidden = isAuthenticated;
+    logoutBtn.hidden = !isAuthenticated;
+    if (isAuthenticated) {
+      var user = await auth0Client.getUser();
+      setStatus('Signed in as ' + user.name + ' (' + user.email + ')');
+      profileEl.hidden = false;
+      profileEl.textContent = JSON.stringify(user, null, 2);
+    } else {
+      setStatus('You are not signed in yet. Click "Log in" to sign in with Auth0.');
+      profileEl.hidden = true;
+    }
+  }
+
+  async function init() {
+    auth0Client = await auth0.createAuth0Client({
+      domain: AUTH0_DOMAIN,
+      clientId: AUTH0_CLIENT_ID,
+      authorizationParams: { redirect_uri: window.location.href }
+    });
+    if (location.search.indexOf('code=') !== -1 && location.search.indexOf('state=') !== -1) {
+      await auth0Client.handleRedirectCallback();
+      window.history.replaceState({}, document.title, window.location.pathname);
+    }
+    await updateUI();
+    loginBtn.addEventListener('click', function () { auth0Client.loginWithRedirect(); });
+    logoutBtn.addEventListener('click', function () {
+      auth0Client.logout({ logoutParams: { returnTo: window.location.href } });
+    });
+  }
+
+  init().catch(function (err) { setStatus('Error: ' + err.message); });
+</script>
+</body>
+</html>
