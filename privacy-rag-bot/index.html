@@ -1,0 +1,43 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Privacy-Aware RAG Bot — Auth0 FGA Demo</title><style>body{font-family:system-ui,sans-serif;max-width:920px;margin:24px auto;padding:0 16px;line-height:1.5;color:#111}section{border:1px solid #ccc;border-radius:10px;padding:14px;margin:14px 0}button{padding:8px 12px;margin:4px 4px 4px 0;cursor:pointer}input,select{padding:8px;margin:4px 0;width:320px;max-width:100%}.allow{color:#0a7d0a;font-weight:bold}.deny{color:#c00;font-weight:bold}#trace{font-family:monospace;background:#f6f6f6;padding:12px;border-radius:8px;white-space:pre-wrap}#answer{background:#eef6ff;padding:12px;border-radius:8px;white-space:pre-wrap}.muted{color:#555;font-size:14px}pre{background:#111;color:#8f8;font-size:13px;padding:12px;border-radius:8px;overflow:auto}</style></head><body>
+<h1>🔒 Privacy-Aware RAG Bot</h1>
+<p><b>MLH Global Hack Week: Builders Week — The Privacy-Aware RAG Bot (Auth0 FGA).</b> An internal HR / Legal knowledge assistant. It retrieves answers from a document database — but <b>every candidate document passes an Auth0 FGA authorization check first</b>. A manager can read salary documents; a general employee cannot, even though the document is in the RAG index.</p>
+<p class="muted">Honest scope: static, no-backend demo. Retrieval is real keyword scoring over the in-page document index. The Auth0 FGA check is a small in-page engine implementing the authorization model shown below (no live Auth0 FGA store is called); it models exactly the rule from the challenge — user:alice can view document:budget_Q4, user:bob cannot view document:salary_bands.</p>
+<section><h2>1 · Sign in as (demo identity)</h2>
+<select id="who"><option value="alice">Alice — HR Manager, HR department (user:alice)</option><option value="bob">Bob — Software Engineer, Engineering (user:bob)</option><option value="carol">Carol — Legal Counsel, Legal (user:carol)</option></select><br><button onclick="signin()">Sign in</button>
+<p id="me">Not signed in — pick a user above.</p></section>
+<section><h2>2 · Ask the bot (RAG)</h2>
+<input id="q" value="What are the salary bands?" placeholder="Ask about PTO, salary bands, Q4 budget, NDA, office hours…">
+<button onclick="ask()">Ask</button><br>
+<button onclick="sample('What is the PTO policy?')">What is the PTO policy?</button>
+<button onclick="sample('What are the salary bands?')">What are the salary bands?</button>
+<button onclick="sample('What is the Q4 budget?')">What is the Q4 budget?</button>
+<button onclick="sample('What does the NDA say?')">What does the NDA say?</button>
+<h3>Retrieval trace — FGA check per candidate document</h3><div id="trace">Ask a question to see retrieval + FGA checks.</div>
+<h3>Answer</h3><div id="answer">—</div></section>
+<section><h2>3 · The document index (RAG corpus — all 5 docs are indexed)</h2><ul><li><b>document:handbook</b> — Employee Handbook: office hours 9–5, hybrid 2 days in office, expense reports due monthly.</li><li><b>document:pto_policy</b> — PTO policy: 20 days paid time off per year, request 2 weeks ahead, up to 5 days roll over.</li><li><b>document:budget_Q4</b> — Q4 budget: Engineering $420,000, Marketing $180,000, total spend capped at $900,000.</li><li><b>document:salary_bands</b> — Salary bands (confidential): Engineer L3 $95,000–$120,000, Manager $130,000–$160,000.</li><li><b>document:legal_nda</b> — Legal: NDA template v3 requires a 12-month non-compete for contractors, signed before onboarding.</li></ul>
+<h3>Auth0 FGA authorization model (as implemented in this demo)</h3><pre>model
+  schema 1.1
+type user
+type document
+  relations
+    define viewer: [user] or viewer from department
+type department
+  relations
+    define member: [user]
+
+# Tuples (who can view what):
+# document:handbook   #viewer @user:*        (everyone)
+# document:pto_policy #viewer @user:*        (everyone)
+# document:budget_Q4  #viewer @user:alice    (HR manager)
+# document:salary_bands #viewer @user:alice  (HR manager only)
+# document:legal_nda  #viewer @user:carol    (Legal counsel)</pre></section>
+<p class="muted">Built for MLH GHW Builders Week, Nov 2026 · Repo: teri-ma-di/ghw-builders-week · Auth0 tenant dev-kcit4n6rij20q4zi (used for the companion Auth0 login demo).</p>
+<script>
+const DOCS=[{id:'handbook',title:'Employee Handbook',text:'Employee Handbook: office hours 9–5, hybrid 2 days in office, expense reports due monthly.',kw:['handbook','hours','office','hybrid','expense']},{id:'pto_policy',title:'PTO policy',text:'PTO policy: 20 days paid time off per year, request 2 weeks ahead, up to 5 days roll over.',kw:['pto','time','off','vacation','days','leave']},{id:'budget_Q4',title:'Q4 budget',text:'Q4 budget: Engineering $420,000, Marketing $180,000, total spend capped at $900,000.',kw:['budget','q4','spend','engineering','marketing','money']},{id:'salary_bands',title:'Salary bands',text:'Salary bands (confidential): Engineer L3 $95,000–$120,000, Manager $130,000–$160,000.',kw:['salary','bands','pay','compensation','wage']},{id:'legal_nda',title:'NDA template',text:'Legal: NDA template v3 requires a 12-month non-compete for contractors, signed before onboarding.',kw:['nda','legal','non-compete','contractor','onboarding']}];
+const USERS={alice:{label:'Alice — HR Manager, HR',can:['handbook','pto_policy','budget_Q4','salary_bands']},bob:{label:'Bob — Software Engineer, Engineering',can:['handbook','pto_policy']},carol:{label:'Carol — Legal Counsel, Legal',can:['handbook','pto_policy','legal_nda']}};
+let current=null;
+function signin(){current=document.getElementById('who').value;const u=USERS[current];document.getElementById('me').textContent='Signed in as '+u.label+' (user:'+current+'). Can view: '+u.can.map(function(d){return 'document:'+d;}).join(', ')+'.';}
+function canView(docId){return current && USERS[current].can.indexOf(docId)>=0;}
+function sample(q){document.getElementById('q').value=q;ask();}
+function ask(){if(!current){document.getElementById('answer').textContent='Please sign in first (step 1).';return;}const q=document.getElementById('q').value.toLowerCase();const words=q.replace(/[^a-z0-9 ]/g,'').split(/\s+/).filter(function(w){return w.length>2;});const scored=DOCS.map(function(d){const hits=d.kw.filter(function(k){return words.indexOf(k)>=0||q.indexOf(k)>=0;});return {d:d,hits:hits};}).filter(function(x){return x.hits.length>0;}).sort(function(a,b){return b.hits.length-a.hits.length;});let trace='Query: "'+document.getElementById('q').value+'" as user:'+current+'\n';if(!scored.length){trace+='No documents matched the query.';document.getElementById('trace').textContent=trace;document.getElementById('answer').textContent='I could not find a relevant document you can access.';return;}const allowed=[],denied=[];scored.forEach(function(x){const ok=canView(x.d.id);trace+='candidate document:'+x.d.id+'  (keyword matches: '+x.hits.join(', ')+')\n  FGA check: user:'+current+' can view document:'+x.d.id+' ? '+(ok?'ALLOWED':'DENIED')+'\n';if(ok)allowed.push(x.d);else denied.push(x.d);});document.getElementById('trace').textContent=trace;if(allowed.length){document.getElementById('answer').textContent='Based on '+allowed.map(function(d){return 'document:'+d.id;}).join(', ')+':\n\n'+allowed.map(function(d){return d.text;}).join('\n')+(denied.length?'\n\n(Note: '+denied.length+' matching document(s) were excluded by the FGA check — you do not have access to them.)':'');}else{document.getElementById('answer').textContent='I found '+denied.length+' document(s) that match your question, but you do not have access to them. FGA check: user:'+current+' cannot view '+denied.map(function(d){return 'document:'+d.id;}).join(', ')+'. I cannot use them to answer — please ask your HR manager.';}}
+</script></body></html>
