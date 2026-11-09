@@ -7,14 +7,14 @@ A full-stack personal assistant that uses the user's authenticated identity to c
 ## How it works
 
 1. Authenticate the user with Auth0 Universal Login. The app is a Single Page Application registered in the Auth0 tenant `dev-kcit4n6rij20q4zi` (domain `dev-kcit4n6rij20q4zi.us.auth0.com`) — the same SPA used by `auth0-demo/`. It uses the Auth0 SPA SDK from the CDN, exactly like `auth0-demo/index.html`.
-2. First-party API: after login, the app fetches `settings.json` from its own origin with the user's Auth0 ID token as a Bearer token. The file is the first-party settings service — it stores saved settings keyed by Auth0 user id, and the app reads the entry for the signed-in user's `sub`. Gary's saved settings: home city Woodbridge, Ontario, Canada (43.68, -79.59) and temperature unit Celsius.
+2. First-party API: after login, the app fetches `settings.json` from its own origin with the user's Auth0 ID token as a Bearer token. The file is the first-party settings service — it stores saved settings keyed by the user's email address, and the app reads the entry for the signed-in user's email. Gary's saved settings: home city Woodbridge, Ontario, Canada (43.68, -79.59) and temperature unit Celsius.
 3. Third-party API: the assistant calls the public Open-Meteo weather API (no key needed) for the user's saved home city and reads the current temperature.
 4. Single conversation: in the chat UI, the user asks "What is the weather where I live?" The assistant replies in the same conversation, referencing the user-specific setting from the first-party API (home city and Celsius preference) and the live weather from Open-Meteo.
 
 ## Files
 
 - `index.html` — the assistant app (Auth0 login, settings fetch, Open-Meteo call, chat UI, step-by-step trace).
-- `settings.json` — the first-party settings service data, keyed by Auth0 user id.
+- `settings.json` — the first-party settings service data, keyed by the user's email address.
 
 ## Run it
 
