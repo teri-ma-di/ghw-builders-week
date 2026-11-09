@@ -1,0 +1,153 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Context-Preserving Assistant - Auth0</title>
+<style>
+  body { font-family: system-ui, sans-serif; background: #0f172a; color: #e2e8f0; margin: 0; padding: 2rem; }
+  main { max-width: 680px; margin: 0 auto; }
+  h1 { font-size: 1.6rem; }
+  h2 { font-size: 1.1rem; margin-top: 1.5rem; }
+  button { background: #6366f1; color: #fff; border: 0; border-radius: 8px; padding: 0.6rem 1.2rem; font-size: 1rem; cursor: pointer; }
+  button:hover { background: #4f46e5; }
+  button.secondary { background: #334155; }
+  input[type="text"] { width: 100%; box-sizing: border-box; padding: 0.6rem; border-radius: 8px; border: 1px solid #475569; background: #1e293b; color: #e2e8f0; font-size: 1rem; }
+  #chat { background: #1e293b; border-radius: 8px; padding: 1rem; min-height: 120px; }
+  #chat p { margin: 0.5rem 0; }
+  .user-msg { color: #93c5fd; }
+  .assistant-msg { color: #bbf7d0; }
+  #trace { background: #111827; border: 1px solid #374151; border-radius: 8px; padding: 1rem; font-size: 0.9rem; }
+  #trace li { margin: 0.3rem 0; }
+  code { background: #1e293b; padding: 0.1rem 0.3rem; border-radius: 4px; }
+</style>
+</head>
+<body>
+<main>
+  <h1>Context-Preserving Assistant</h1>
+  <p>A personal assistant that signs you in with Auth0, reads your saved settings from a first-party API, then answers using the public Open-Meteo weather API — all in one conversation.</p>
+  <p id="status">Loading...</p>
+  <p>
+    <button id="login" hidden>Log in</button>
+    <button id="logout" hidden>Log out</button>
+  </p>
+  <h2>Conversation</h2>
+  <div id="chat"><p class="assistant-msg">Hi! Sign in, then ask me about the weather where you live.</p></div>
+  <p><input id="question" type="text" placeholder="Ask the assistant..." /></p>
+  <p>
+    <button id="ask">Ask</button>
+    <button id="suggest" class="secondary">What is the weather where I live?</button>
+  </p>
+  <h2>How it worked (trace)</h2>
+  <ol id="trace"><li>Waiting for sign-in.</li></ol>
+</main>
+<script src="https://cdn.auth0.com/js/auth0-spa-js/2.0/auth0-spa-js.production.js"></script>
+<script>
+  var AUTH0_DOMAIN = 'dev-kcit4n6rij20q4zi.us.auth0.com';
+  var AUTH0_CLIENT_ID = '7wyHonMGCMit8P772fQZd2CKH0SffdcA';
+  var auth0Client = null;
+  var currentUser = null;
+  var idToken = null;
+  var userSettings = null;
+  var statusEl = document.getElementById('status');
+  var loginBtn = document.getElementById('login');
+  var logoutBtn = document.getElementById('logout');
+  var chatEl = document.getElementById('chat');
+  var questionEl = document.getElementById('question');
+  var traceEl = document.getElementById('trace');
+
+  function setStatus(text) { statusEl.textContent = text; }
+  function addTrace(text) { var li = document.createElement('li'); li.textContent = text; traceEl.appendChild(li); }
+  function addMessage(text, cls) { var p = document.createElement('p'); p.className = cls; p.textContent = text; chatEl.appendChild(p); }
+  function weatherWord(code) {
+    if (code === 0) return 'clear sky';
+    if (code === 1 || code === 2 || code === 3) return 'partly cloudy';
+    if (code === 45 || code === 48) return 'foggy';
+    if (code === 51 || code === 53 || code === 55) return 'drizzle';
+    if (code === 61 || code === 63 || code === 65 || code === 80 || code === 81 || code === 82) return 'rainy';
+    if (code === 71 || code === 73 || code === 75 || code === 77 || code === 85 || code === 86) return 'snowy';
+    if (code === 95 || code === 96 || code === 99) return 'thunderstorm';
+    return 'overcast';
+  }
+
+  async function loadSettings() {
+    var res = await fetch('settings.json', { headers: { 'Authorization': 'Bearer ' + idToken } });
+    var allSettings = await res.json();
+    userSettings = allSettings[currentUser.email] || allSettings['default'];
+    addTrace('First-party API: GET settings.json with your Auth0 ID token returned your saved settings — home city ' + userSettings.homeCity + ', temperature unit ' + userSettings.temperatureUnit + '.');
+  }
+
+  async function answerWeather() {
+    var url = 'https://api.open-meteo.com/v1/forecast?latitude=' + userSettings.latitude + '&longitude=' + userSettings.longitude + '&current=temperature_2m,relative_humidity_2m,weather_code,wind_speed_10m';
+    var res = await fetch(url);
+    var data = await res.json();
+    var cur = data.current;
+    addTrace('Third-party API: GET Open-Meteo for ' + userSettings.homeCity + ' returned ' + cur.temperature_2m + ' C, humidity ' + cur.relative_humidity_2m + '%, wind ' + cur.wind_speed_10m + ' km/h, weather code ' + cur.weather_code + '.');
+    var unit = userSettings.temperatureUnit === 'celsius' ? 'C' : 'F';
+    return 'Your saved home city is ' + userSettings.homeCity + ' and you prefer ' + userSettings.temperatureUnit + '. Right now it is ' + cur.temperature_2m + '°' + unit + ' there (' + weatherWord(cur.weather_code) + '), with ' + cur.relative_humidity_2m + '% humidity and wind at ' + cur.wind_speed_10m + ' km/h. I kept your settings from the first-party API and the weather from Open-Meteo in this one conversation.';
+  }
+
+  async function askAssistant() {
+    var q = questionEl.value.trim();
+    if (!q) return;
+    addMessage('You: ' + q, 'user-msg');
+    questionEl.value = '';
+    if (!currentUser) {
+      addMessage('Assistant: Please sign in first, so I can load your saved settings and answer with your own context.', 'assistant-msg');
+      return;
+    }
+    if (!userSettings) { await loadSettings(); }
+    if (/weather/i.test(q)) {
+      try {
+        var reply = await answerWeather();
+        addMessage('Assistant: ' + reply, 'assistant-msg');
+      } catch (err) {
+        addMessage('Assistant: I could not reach the weather service: ' + err.message, 'assistant-msg');
+      }
+    } else {
+      addMessage('Assistant: I can answer using your saved settings and live weather — try asking about the weather where you live.', 'assistant-msg');
+    }
+  }
+
+  async function updateUI() {
+    var isAuthenticated = await auth0Client.isAuthenticated();
+    loginBtn.hidden = isAuthenticated;
+    logoutBtn.hidden = !isAuthenticated;
+    if (isAuthenticated) {
+      currentUser = await auth0Client.getUser();
+      idToken = await auth0Client.getTokenSilently();
+      setStatus('Signed in as ' + currentUser.name + ' (' + currentUser.email + ')');
+      addTrace('Auth0 Universal Login: signed in as ' + currentUser.name + ' (' + currentUser.email + ').');
+      await loadSettings();
+    } else {
+      setStatus('You are not signed in yet. Click "Log in" to sign in with Auth0.');
+    }
+  }
+
+  async function init() {
+    auth0Client = await auth0.createAuth0Client({
+      domain: AUTH0_DOMAIN,
+      clientId: AUTH0_CLIENT_ID,
+      authorizationParams: { redirect_uri: window.location.href }
+    });
+    if (location.search.indexOf('code=') !== -1 && location.search.indexOf('state=') !== -1) {
+      await auth0Client.handleRedirectCallback();
+      window.history.replaceState({}, document.title, window.location.pathname);
+    }
+    await updateUI();
+    loginBtn.addEventListener('click', function () { auth0Client.loginWithRedirect(); });
+    logoutBtn.addEventListener('click', function () {
+      auth0Client.logout({ logoutParams: { returnTo: window.location.href } });
+    });
+    document.getElementById('ask').addEventListener('click', askAssistant);
+    document.getElementById('suggest').addEventListener('click', function () {
+      questionEl.value = 'What is the weather where I live?';
+      askAssistant();
+    });
+    questionEl.addEventListener('keydown', function (e) { if (e.key === 'Enter') askAssistant(); });
+  }
+
+  init().catch(function (err) { setStatus('Error: ' + err.message); });
+</script>
+</body>
+</html>
